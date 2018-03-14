@@ -7,13 +7,59 @@
 
 enum w3_msg_id
 {
+	W3GS_PING = 0x01,
 	W3GS_SLOT_INFO_JOIN = 0x04,
+	W3GS_REJECT_JOIN,
+	W3GS_PLAYER_INFO,
+	W3GS_PLAYER_LEFT,
+	W3GS_PLAYER_LOADED,
+	W3GS_SLOT_INFO,
+	W3GS_COUNTDOWN_START,
+	W3GS_COUNTDOWN_END,
+	W3GS_INCOMING_ACTION,
+	W3GS_CHAT_FROM_HOST = 0x0F,
+	W3GS_KICKED = 0x1C,
 	W3GS_REQ_JOIN = 0x1E,
+	W3GS_OUTGOING_ACTION = 0x26,
 	W3GS_SEARCH_GAME = 0x2F,
 	W3GS_GAME_INFO,
 	W3GS_CREATE_GAME,
 	W3GS_REFRESH_GAME,
 	W3GS_END_GAME, // originally DECREATEGAME, which isn't a word
+	W3GS_MAP_CHECK = 0x3D,
+	W3GS_UNKNOWN1 = 0x40,
+	W3GS_MAP_SIZE = 0x42,
+	W3GS_PONG = 0x46,
+};
+
+enum
+{
+	PLAYER_TYPE_HUMAN,
+	PLAYER_TYPE_COMPUTER
+};
+
+enum
+{
+	SLOT_STATUS_OPEN,
+	SLOT_STATUS_CLOSED,
+	SLOT_STATUS_OCCUPIED
+};
+
+enum
+{
+	RACE_HUMAN_SHIFT,
+	RACE_ORC_SHIFT,
+	RACE_ELF_SHIFT,
+	RACE_UNDEAD_SHIFT,
+	RACE_RANDOM_SHIFT,
+	RACE_FIXED_SHIFT
+};
+
+enum
+{
+	COMPUTER_TYPE_EASY,
+	COMPUTER_TYPE_NORMAL,
+	COMPUTER_TYPE_HARD
 };
 
 typedef struct w3gs_header
@@ -24,6 +70,50 @@ typedef struct w3gs_header
 } w3gs_header;
 
 ////////// TCP ////////////
+typedef struct w3gs_slot_info
+{
+	unsigned char player;
+	unsigned char dl_status;
+	unsigned char status;
+	unsigned char type; // see PLAYER_TYPE_
+	unsigned char team;
+	unsigned char color;
+	unsigned char race;
+	unsigned char computer_type;
+	unsigned char handicap;
+} w3gs_slot_info;
+
+typedef struct w3gs_slot_info_join // 0x04 and 0x09
+{
+	w3gs_header header;
+	unsigned short length;
+	unsigned char num_slots;
+	w3gs_slot_info slot[0];
+} w3gs_slot_info_join;
+
+typedef struct w3gs_player_info_1 // 0x06
+{
+	w3gs_header header;
+	unsigned int counter;
+	unsigned char player;
+	char name[0];
+} w3gs_player_info_1;
+// another one of these damn variable length strings in the middle of a packet!
+typedef struct w3gs_player_info_2 // 0x06
+{
+	unsigned short unknown;
+	unsigned short af_inet;
+	unsigned short port;
+	unsigned int ext_addr;
+	unsigned int unknown2;
+	unsigned int unknown3;
+	unsigned short af_inet2;
+	unsigned short int_port;
+	unsigned int int_addr;
+	unsigned int unknown4;
+	unsigned int unknown5;
+} w3gs_player_info_2;
+
 typedef struct w3gs_req_join // 0x1E
 {
 	w3gs_header header;
@@ -39,10 +129,8 @@ typedef struct w3gs_req_join // 0x1E
 	unsigned int int_ip;
 	unsigned int unknown4;
 	unsigned int unknown5;
-	//char unknown6;
 } w3gs_req_join;
 
-////////// UDP ////////////
 typedef struct w3gs_search_game // 0x2F
 {
 	w3gs_header header;
@@ -82,6 +170,27 @@ typedef struct w3gs_end_game // 0x33
 	w3gs_header header;
 	unsigned int counter;
 } w3gs_end_game;
+
+typedef struct w3gs_map_check_1 // 0x3D
+{
+	w3gs_header header;
+	unsigned int unknown;
+	char path[0]; // again???
+} w3gs_map_check_1;
+
+typedef struct w3gs_map_check_2 // 0x3D
+{
+	unsigned int size;
+	unsigned int crc;
+	unsigned int csum;
+	unsigned int sha1;
+} w3gs_map_check_2;
+
+typedef struct w3gs_ping // 0x01 and 0x46
+{
+	w3gs_header header;
+	unsigned int tick;
+} w3gs_ping;
 
 #endif // _WAR3__H
 
