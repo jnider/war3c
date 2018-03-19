@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include "war3.h"
 #include "ll.h"
+#include "maps.h"
 
 #define NUM_DESCRIPTORS 3
 #define MAX_PLAYERS 12
@@ -85,7 +86,7 @@ char* command_str[] =
 
 const int udp_port = 6112;
 int state = STATE_SEARCHING;
-char mapname[64];
+//char mapname[64];
 w3c_player_info player[MAX_PLAYERS];
 int player_id; // my player id
 
@@ -153,15 +154,15 @@ unsigned char w3gs_race_to_int(const char* c)
 	if (strcasecmp(c, "human") == 0)
 		return 1<<RACE_HUMAN_SHIFT;
 	else if (strcasecmp(c, "orc") == 0)
-		return 1<<RACE_HUMAN_SHIFT;
+		return 1<<RACE_ORC_SHIFT;
 	else if (strcasecmp(c, "elf") == 0)
-		return 1<<RACE_HUMAN_SHIFT;
+		return 1<<RACE_ELF_SHIFT;
 	else if (strcasecmp(c, "undead") == 0)
-		return 1<<RACE_HUMAN_SHIFT;
+		return 1<<RACE_UNDEAD_SHIFT;
 	else if (strcasecmp(c, "fixed") == 0)
-		return 1<<RACE_HUMAN_SHIFT;
+		return 1<<RACE_FIXED_SHIFT;
 	else if (strcasecmp(c, "random") == 0)
-		return 1<<RACE_HUMAN_SHIFT;
+		return 1<<RACE_RANDOM_SHIFT;
 	return 0;
 }
 
@@ -278,19 +279,16 @@ static int cmd_set(int sock, const char* player, const char* attr, const char* v
 	{
 		a = 0x11;
 		v = atoi(val) - 1;
-		printf("Setting team to %i\n", v);
 	}
 	else if (strcmp(attr, "colour") == 0)
 	{
 		a = 0x12;
 		v = w3gs_colour_to_int(val);
-		printf("Setting colour to %i\n", v);
 	}
 	else if (strcmp(attr, "race") == 0)
 	{
 		a = 0x13;
 		v = w3gs_race_to_int(val);
-		printf("Setting race to %i\n", v);
 	}
 
 	p = atoi(player);
@@ -387,12 +385,6 @@ static void add_action(linked_list* list, int type, int param1, int param2)
 	ll_add(list, action);
 }
 
-static int load_map(const char* name)
-{
-	printf("Loading map from %s\n", name);
-	return 0;
-}
-
 static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, linked_list* actions_list)
 {
 	int i;
@@ -431,7 +423,7 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 		pi1 = (w3gs_player_info_1*)buf;
 		pi2 = (w3gs_player_info_2*)(pi1->name + strlen(pi1->name) + 1);
 		//inet_ntop(AF_INET, &pi2->ext_addr, inaddr_str, 16);
-		printf("Player %i (%s)\n", pi1->player, pi1->name);
+		//printf("Player %i (%s)\n", pi1->player, pi1->name);
 		player[pi1->player - 1].name = strdup(pi1->name);
 		break;
 
@@ -457,7 +449,7 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 		slot_info = (w3gs_slot_info_join_1*)buf;
 		//printf("slots: %i\n", slot_info->num_slots);
 		slot = slot_info->slot;
-		printf("Player\tType\tStatus\tTeam\tColor\tRace\n");
+		//printf("Player\tType\tStatus\tTeam\tColor\tRace\n");
 		for (i=0; i < slot_info->num_slots; i++)
 		{
 			if (slot->type == PLAYER_TYPE_HUMAN)
@@ -511,8 +503,9 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 		if (state == STATE_JOINED)
 		{
 			printf("Check map @ %s size=%i crc=0x%x sha1=0x%x\n", mc1->path, mc2->size, mc2->crc, mc2->sha1);
-			add_action(actions_list, ACTION_MAP_CHECK, mc2->size, 0);
-			strcpy(mapname, mc1->path);
+			char* path = strdup(mc1->path);
+			add_action(actions_list, ACTION_MAP_CHECK, (unsigned long)path, mc2->size);
+			//strcpy(mapname, mc1->path);
 		}
 		break;
 
@@ -755,7 +748,9 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_MAP_CHECK:
-				send_map_size(fd[TCP_SOCKET].fd, action->param1);
+				load_map((char*)action->param1);
+				send_map_size(fd[TCP_SOCKET].fd, action->param2);
+				free((char*)action->param1); // this was a duplicated string
 				break;
 
 			case ACTION_CONNECT_TCP:
@@ -794,7 +789,7 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_LOAD_MAP:
-				load_map(mapname);
+				//load_map(mapname);
 				send_map_loaded(fd[TCP_SOCKET].fd, 2);
 				break;
 
