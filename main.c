@@ -93,7 +93,7 @@ int player_id; // my player id
 typedef struct game_action
 {
 	int type;
-	int param1;
+	long param1;
 	int param2;
 } game_action;
 
@@ -227,7 +227,7 @@ char w3gs_colour_to_int(const char *c)
 	return 12;
 }
 
-w3gs_send_player_update(int sock, int player, int attr, int val)
+static void w3gs_send_player_update(int sock, int player, int attr, int val)
 {
 	w3gs_player_update req;
 	req.header.a = 0xF7;
