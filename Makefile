@@ -7,7 +7,13 @@
 # libsdl2-image-dev
 
 SRC = main.c ll.c maps.c
-CFLAGS = -I../StormLib/src -L../StormLib
+CFLAGS = -IStormLib/src -LStormLib
 
-all: $(SRC)
+all: $(SRC) libStorm.a
 	gcc $(CFLAGS) -o war3c $(SRC) -lStorm -ljpeg
+
+libStorm.a:
+	make -C StormLib -f Makefile.linux -j4
+
+tags:
+	ctags -R -f tags *
