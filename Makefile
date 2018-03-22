@@ -3,6 +3,8 @@
 # ranlib -c fails, since there is no -c option. Just removing the -c
 # seems to work.
 
+# Don't forget to put the .so on your path:	export LD_LIBRARY_PATH=./StormLib
+
 #depends on libjpeg: sudo apt-get install libjpeg-dev
 # libsdl2-image-dev
 
