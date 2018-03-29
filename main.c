@@ -645,6 +645,8 @@ static void handle_command(int fd, char* cmdline)
 	int cmd_id = -1;
 
 	cmd[0] = strtok(cmdline, " ");
+	if (!cmd[0])
+		return;
 	
 	for (i=0; i < NUM_COMMANDS; i++)
 	{
