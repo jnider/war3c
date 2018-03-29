@@ -27,7 +27,7 @@
 			if (!_c[i]) \
 			{ \
 				printf("Not enough params for cmd '%s' (expect %i got %i)\n", _c[0], _n+1, i); \
-				return; \
+				return i; \
 			} \
 		}
 
@@ -66,6 +66,8 @@ enum
 {
 	CMD_SHOW,
 	CMD_SET,
+	CMD_QUIT,
+	CMD_RESET,
 	NUM_COMMANDS
 };
 
@@ -82,7 +84,9 @@ typedef struct w3c_player_info
 char* command_str[] = 
 {
 	"show",
-	"set"
+	"set",
+	"quit",
+	"reset"
 };
 
 const int udp_port = 6112;
@@ -638,7 +642,7 @@ static void read_stdin(int fd, char* buf, int buflen, int len, linked_list* acti
 	//printf("CMDBUF: %s\n", buf);
 }
 
-static void handle_command(int fd, char* cmdline)
+static int handle_command(int fd, char* cmdline)
 {
 	char* cmd[MAX_CMD_PARAMS];
 	int i;
@@ -646,7 +650,7 @@ static void handle_command(int fd, char* cmdline)
 
 	cmd[0] = strtok(cmdline, " ");
 	if (!cmd[0])
-		return;
+		return 0;
 	
 	for (i=0; i < NUM_COMMANDS; i++)
 	{
@@ -660,7 +664,7 @@ static void handle_command(int fd, char* cmdline)
 	if (cmd_id == -1)
 	{
 		printf("Unknown command: %s\n", cmd[0]);
-		return;
+		return 1;
 	}
 
 	switch(cmd_id)
@@ -674,7 +678,17 @@ static void handle_command(int fd, char* cmdline)
 		GET_PARAMS(cmd, 3);
 		cmd_set(fd, cmd[1], cmd[2], cmd[3]);
 		break;
+
+	case CMD_RESET:
+		printf("resetting\n");
+		state = STATE_SEARCHING;
+		break;
+
+	case CMD_QUIT:
+		return -1;
 	}
+
+	return 0;
 }
 
 int main(int argc, char** argv)
@@ -715,6 +729,7 @@ int main(int argc, char** argv)
 	char inaddr_str[16];
 	int len;
 	game_action* action;
+	int quit = 0;
 
 	struct pollfd fd[NUM_DESCRIPTORS];
 	fd[UDP_SOCKET].fd = udp;
@@ -726,7 +741,7 @@ int main(int argc, char** argv)
 
 	puts("> ");
 
-	while (1)
+	while (!quit)
 	{
 		// check for incoming network information
 		int count = poll(fd, NUM_DESCRIPTORS, 0); // return immediately
@@ -797,7 +812,8 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_USER_CMD:
-				handle_command(fd[TCP_SOCKET].fd, cmdbuf);
+				if (handle_command(fd[TCP_SOCKET].fd, cmdbuf) < 0)
+					quit = 1;
 				cmdbuf[0] = 0;
 				break;
 			}
