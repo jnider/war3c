@@ -38,7 +38,7 @@ enum actions
 	ACTION_CONNECT_TCP,
 	ACTION_SEND_JOIN_REQ,
 	ACTION_SEARCH_GAME,
-	ACTION_LOAD_MAP,
+	ACTION_LOAD_GAME,
 	ACTION_USER_CMD,
 };
 
@@ -365,7 +365,7 @@ static void send_map_size(int sock, int size)
 	send(sock, &req, sizeof(req), 0);
 }
 
-static void send_map_loaded(int sock, unsigned char player)
+static void send_game_loaded(int sock, unsigned char player)
 {
 	w3gs_player_loaded req;
 	req.header.a = 0xF7;
@@ -490,7 +490,7 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 	case W3GS_COUNTDOWN_END:
 		printf("Countdown ended\n");
 		state = STATE_PLAYING;
-		add_action(actions_list, ACTION_LOAD_MAP, 0, 0);
+		add_action(actions_list, ACTION_LOAD_GAME, 0, 0);
 		break;
 
 	case W3GS_OUTGOING_ACTION:
@@ -788,9 +788,9 @@ int main(int argc, char** argv)
 				post_search_game(fd[UDP_SOCKET].fd, action->param1, buf, action->param2);
 				break;
 
-			case ACTION_LOAD_MAP:
+			case ACTION_LOAD_GAME:
 				//load_map(mapname);
-				send_map_loaded(fd[TCP_SOCKET].fd, 2);
+				send_game_loaded(fd[TCP_SOCKET].fd, 2);
 				break;
 
 			case ACTION_USER_CMD:
