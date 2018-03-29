@@ -44,6 +44,7 @@ enum actions
 
 enum states
 {
+	STATE_FAILED,
 	STATE_SEARCHING,	// waiting to see who is hosting a game
 	STATE_FOUND,		// selected a game
 	STATE_JOINING,
@@ -375,7 +376,7 @@ static void send_game_loaded(int sock, unsigned char player)
 	send(sock, &req, sizeof(req), 0);
 }
 
-static void add_action(linked_list* list, int type, int param1, int param2)
+static void add_action(linked_list* list, int type, long param1, int param2)
 {
 	game_action* action = malloc(sizeof(game_action));
 	action->type = type;
@@ -505,7 +506,6 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 			printf("Check map @ %s size=%i crc=0x%x sha1=0x%x\n", mc1->path, mc2->size, mc2->crc, mc2->sha1);
 			char* path = strdup(mc1->path);
 			add_action(actions_list, ACTION_MAP_CHECK, (unsigned long)path, mc2->size);
-			//strcpy(mapname, mc1->path);
 		}
 		break;
 
@@ -748,8 +748,10 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_MAP_CHECK:
-				load_map((char*)action->param1);
-				send_map_size(fd[TCP_SOCKET].fd, action->param2);
+				if (load_map((char*)action->param1) == 0)
+					send_map_size(fd[TCP_SOCKET].fd, action->param2);
+				else
+					state = STATE_FAILED;
 				free((char*)action->param1); // this was a duplicated string
 				break;
 
@@ -789,7 +791,6 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_LOAD_GAME:
-				//load_map(mapname);
 				send_game_loaded(fd[TCP_SOCKET].fd, 2);
 				break;
 
