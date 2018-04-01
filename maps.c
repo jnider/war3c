@@ -243,7 +243,7 @@ err:
 	return ret;
 }
 
-int load_map(char* path)
+int load_map(const char* path, const char* base)
 {
 	int bufsize = 512;
 	char* buf;
@@ -251,23 +251,32 @@ int load_map(char* path)
 	w3m_file_header_2* header2;
 	string_table trigstr;
 
+	char* fullpath = malloc(strlen(path) + strlen(base) + 3);
+	if (base)
+	{
+		strcpy(fullpath, base);
+		if (fullpath[strlen(fullpath)-1] != '/')
+			strcat(fullpath, "/");
+	}
+	strcat(fullpath, path);
+
 	// fix up the path for POSIX from Windows
-	char* slash = strchr(path, '\\');
+	char* slash = strchr(fullpath, '\\');
 	while (slash)
 	{
 		*slash = '/';
-		slash = strchr(path, '\\');
+		slash = strchr(fullpath, '\\');
 	}
 
-	printf("Loading map from %s\n", path);
+	printf("Loading map from %s\n", fullpath);
 
 	int size;
 	HANDLE MapMPQ;
 	HANDLE SubFile;
-	FILE* mf = fopen(path, "rb");
+	FILE* mf = fopen(fullpath, "rb");
 	if (!mf)
 	{
-		printf("Error opening map at %s\n", path);
+		printf("Error opening map at %s\n", fullpath);
 		return -1;
 	}
 
@@ -290,7 +299,7 @@ int load_map(char* path)
 
 	fclose(mf);
 
-	if (!SFileOpenArchive(path, 0, MPQ_OPEN_FORCE_MPQ_V1, &MapMPQ))
+	if (!SFileOpenArchive(fullpath, 0, MPQ_OPEN_FORCE_MPQ_V1, &MapMPQ))
 		return -2;
 
 	//if (!SFileOpenFileEx(MapMPQ, "Scripts\\common.j", 0, &SubFile))

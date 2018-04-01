@@ -141,7 +141,7 @@ typedef struct blp_header_jpg
 	// immediately followed by jpg data
 } blp_header_jpg;
 
-int load_map(char* path);
+int load_map(const char* path, const char* base);
 
 #endif // _MAPS__H
 

@@ -89,6 +89,10 @@ char* command_str[] =
 	"reset"
 };
 
+// from ka_array.c
+extern const unsigned int ka_array[];
+extern const unsigned int ka_size;
+
 const int udp_port = 6112;
 int state = STATE_SEARCHING;
 //char mapname[64];
@@ -690,11 +694,12 @@ static int handle_command(int fd, char* cmdline)
 
 	return 0;
 }
-
+ 
 int main(int argc, char** argv)
 {
 	struct sockaddr_in sockaddr, srvaddr;
 	int err;
+
 	printf("Warcraft III client\n");
 
 	// create the socket
@@ -730,6 +735,8 @@ int main(int argc, char** argv)
 	int len;
 	game_action* action;
 	int quit = 0;
+	char* mapbase = "."; ///mnt/badger/games/war3ft/";
+	//char* mapbase = "/mnt/data/public/games/war3ft/";
 
 	struct pollfd fd[NUM_DESCRIPTORS];
 	fd[UDP_SOCKET].fd = udp;
@@ -765,10 +772,17 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_MAP_CHECK:
-				if (load_map((char*)action->param1) == 0)
-					send_map_size(fd[TCP_SOCKET].fd, action->param2);
-				else
+				err = load_map((char*)action->param1, mapbase);
+				if (err < 0)
+				{
+					printf("Map no good (%i)\n", err);
 					state = STATE_FAILED;
+				}
+				else
+				{
+					printf("Map ok\n");
+					send_map_size(fd[TCP_SOCKET].fd, err);
+				}
 				free((char*)action->param1); // this was a duplicated string
 				break;
 
