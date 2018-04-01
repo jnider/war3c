@@ -23,7 +23,7 @@ enum w3_msg_id
 	W3GS_REQ_JOIN = 0x1E,
 	W3GS_OUTGOING_ACTION = 0x26,
 	W3GS_KEEPALIVE, 				// 0x27
-	W3GS_PLAYER_UPDATE, 			// 0x28
+	W3GS_PLAYER_UPDATE, 			// 0x28 - original: CHAT_TO_HOST
 	W3GS_SEARCH_GAME = 0x2F,
 	W3GS_GAME_INFO,
 	W3GS_CREATE_GAME,
@@ -107,6 +107,8 @@ typedef struct w3gs_slot_info_join_1 // 0x04 and 0x09
 typedef struct w3gs_slot_info_join_2 // 0x04
 {
 	unsigned int timestamp;
+	unsigned short u1;
+	char player; // your player id for this game
 } w3gs_slot_info_join_2;
 
 typedef struct w3gs_player_info_1 // 0x06
@@ -144,6 +146,14 @@ typedef struct w3gs_player_loaded // 0x08
 	w3gs_header header;
 	unsigned char player;
 } w3gs_player_loaded;
+
+typedef struct w3gs_incoming_action // 0x0C
+{
+	w3gs_header header;
+	unsigned char player;
+	unsigned short len;
+	char data[0];
+} w3gs_incoming_action;
 
 typedef struct w3gs_req_join // 0x1E
 {

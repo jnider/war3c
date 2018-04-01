@@ -14,7 +14,7 @@ SRC = main.c ll.c maps.c ka_array.c
 CFLAGS = -IStormLib/src -LStormLib
 
 all: $(SRC) libStorm.a
-	gcc $(CFLAGS) -o war3c $(SRC) -lStorm 
+	gcc $(CFLAGS) -o war3c $(SRC) -lStorm -lrt -lpthread
 
 libStorm.a:
 	make -C StormLib -f Makefile.linux -j4

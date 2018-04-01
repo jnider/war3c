@@ -9,6 +9,8 @@
 #include <poll.h>
 #include <time.h>
 #include <unistd.h>
+#include <signal.h>
+#include <semaphore.h>
 #include "war3.h"
 #include "ll.h"
 #include "maps.h"
@@ -40,6 +42,7 @@ enum actions
 	ACTION_SEARCH_GAME,
 	ACTION_LOAD_GAME,
 	ACTION_USER_CMD,
+	ACTION_KEEPALIVE,
 };
 
 enum states
@@ -92,12 +95,16 @@ char* command_str[] =
 // from ka_array.c
 extern const unsigned int ka_array[];
 extern const unsigned int ka_size;
+int ka_index=0;
 
 const int udp_port = 6112;
 int state = STATE_SEARCHING;
 //char mapname[64];
 w3c_player_info player[MAX_PLAYERS];
 int player_id; // my player id
+timer_t keepalive_timer;
+linked_list* actions_list;
+sem_t action_sem;
 
 typedef struct game_action
 {
@@ -105,6 +112,34 @@ typedef struct game_action
 	long param1;
 	int param2;
 } game_action;
+
+static void add_action(linked_list* list, int type, long param1, int param2)
+{
+	game_action* action = malloc(sizeof(game_action));
+	action->type = type;
+	action->param1 = param1;
+	action->param2 = param2;
+	//printf("Adding action %i\n", type);
+	sem_wait(&action_sem);
+	ll_add(list, action);
+	sem_post(&action_sem);
+}
+
+static void sig_handler(int sig, siginfo_t* si, void* uc)
+{
+	// should probably check to make sure this is the correct signal, and correct timer
+	if (sig == SIGRTMIN)
+	{
+		timer_t* pt = si->si_value.sival_ptr;
+		if (*pt == keepalive_timer)
+		{
+			printf("queuing keepalive action\n");
+			add_action(actions_list, ACTION_KEEPALIVE, 0, 0);
+		}
+	}
+	else
+		printf("Caught signal %i\n", sig);
+}
 
 char* w3gs_player_type(unsigned char type, unsigned char comp)
 {
@@ -336,7 +371,7 @@ static void send_pong(int sock, unsigned int tick)
 	send(sock, &req, sizeof(req), 0);
 }
 
-static void send_join_req(int sock, int game_id, int key)
+static void send_join_req(int sock, int game_id, int key, const char* name)
 {
 	w3gs_req_join req;
 	struct sockaddr_in addr;
@@ -352,7 +387,7 @@ static void send_join_req(int sock, int game_id, int key)
 	req.unknown = 0;
 	req.port = 6112;
 	req.peer_key = 0xa;
-	strcpy(req.name, "ifc6410");
+	strcpy(req.name, name);
 	req.unknown2 = 1;
 	req.unknown3 = 2;
 	req.int_port = addr.sin_port;
@@ -384,14 +419,15 @@ static void send_game_loaded(int sock, unsigned char player)
 	send(sock, &req, sizeof(req), 0);
 }
 
-static void add_action(linked_list* list, int type, long param1, int param2)
+static void send_keepalive(int sock, int u, int val)
 {
-	game_action* action = malloc(sizeof(game_action));
-	action->type = type;
-	action->param1 = param1;
-	action->param2 = param2;
-	//printf("Adding action %i\n", type);
-	ll_add(list, action);
+	w3gs_keepalive req;
+	req.header.a = 0xF7;
+	req.header.msg_id = W3GS_KEEPALIVE;
+	req.header.len = sizeof(w3gs_keepalive);
+	req.u1 = u;
+	req.val = val;
+	send(sock, &req, sizeof(req), 0);
 }
 
 static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, linked_list* actions_list)
@@ -417,6 +453,7 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 	game_action* action;
 	w3gs_player_left* left;
 	w3gs_player_loaded* loaded;
+	w3gs_incoming_action* ia;
 
 	inet_ntop(AF_INET, &inaddr->sin_addr, inaddr_str, 16);
 
@@ -523,7 +560,8 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 		slot_info = (w3gs_slot_info_join_1*)buf;
 		//printf("length: %i\n", slot_info->length);
 		//printf("slots: %i\n", slot_info->num_slots);
-		slot = slot_info->slot + slot_info->num_slots;
+		//slot = slot_info->slot + slot_info->num_slots;
+		slot = slot_info->slot;
 /*
 		printf("Player\tType\tStatus\tTeam\tColor\tRace\n");
 		for (i=0; i < slot_info->num_slots; i++)
@@ -537,7 +575,8 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 			slot++;
 		}
 */
-		slot_info_2 = (w3gs_slot_info_join_2*)slot;
+		slot_info_2 = (w3gs_slot_info_join_2*)(slot_info->slot + slot_info->num_slots);
+		//slot_info_2 = (w3gs_slot_info_join_2*)slot;
 /*
 		printf("size: %i used %i\n", slot_info->header.len,
 			sizeof(w3gs_slot_info) * slot_info->num_slots-1
@@ -545,6 +584,8 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 			+ sizeof(w3gs_slot_info_join_2));
 		printf("Timestamp: 0x%x\n", slot_info_2->timestamp);
 */
+		printf("Player ID: %i\n", slot_info_2->player);
+		player_id = slot_info_2->player;
 		break;
 
 	case W3GS_SEARCH_GAME:
@@ -694,11 +735,14 @@ static int handle_command(int fd, char* cmdline)
 
 	return 0;
 }
- 
+
 int main(int argc, char** argv)
 {
 	struct sockaddr_in sockaddr, srvaddr;
 	int err;
+	struct sigaction sa;
+	struct sigevent sev;
+	sigset_t mask;
 
 	printf("Warcraft III client\n");
 
@@ -726,7 +770,7 @@ int main(int argc, char** argv)
 	}
 
 	// wait for a message
-	linked_list* actions_list = ll_init();
+	actions_list = ll_init();
 	int bufsize = 256;
 	int cmdbufsize = 256;
 	char* buf = malloc(bufsize);
@@ -734,7 +778,11 @@ int main(int argc, char** argv)
 	char inaddr_str[16];
 	int len;
 	game_action* action;
+	struct itimerspec tm_100ms;
+	actions_list = ll_init();
+	sem_init(&action_sem, 0, 1);
 	int quit = 0;
+	char* name = "JoelBot";
 	char* mapbase = "."; ///mnt/badger/games/war3ft/";
 	//char* mapbase = "/mnt/data/public/games/war3ft/";
 
@@ -746,12 +794,31 @@ int main(int argc, char** argv)
 	fd[STDIN].fd = STDIN_FILENO;
 	fd[STDIN].events = POLLIN;
 
+	sa.sa_flags = SA_SIGINFO;
+	sa.sa_sigaction = sig_handler;
+	sigemptyset(&sa.sa_mask);
+	if (sigaction(SIGRTMIN, &sa, NULL) == -1)
+		printf("Error setting sig handler\n");
+
+	printf("creating keepalive timer\n");
+	struct sigevent se;
+	se.sigev_notify = SIGEV_SIGNAL;
+	se.sigev_signo = SIGRTMIN;
+	se.sigev_value.sival_ptr = &keepalive_timer;
+	if (timer_create(CLOCK_REALTIME, &se, &keepalive_timer) != 0)
+		printf("Error creating ka timer\n");
+
+	tm_100ms.it_interval.tv_nsec = 100000000; // 100ms
+	tm_100ms.it_interval.tv_sec = 0;
+	tm_100ms.it_value.tv_nsec = 0;
+	tm_100ms.it_value.tv_sec = 10;
+
 	puts("> ");
 
 	while (!quit)
 	{
 		// check for incoming network information
-		int count = poll(fd, NUM_DESCRIPTORS, 0); // return immediately
+		int count = poll(fd, NUM_DESCRIPTORS, -1); // block forever
 		if (count > 0)
 		{
 			if (fd[UDP_SOCKET].revents & POLLIN)
@@ -814,7 +881,7 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_SEND_JOIN_REQ:
-				send_join_req(fd[TCP_SOCKET].fd, action->param1, action->param2);
+				send_join_req(fd[TCP_SOCKET].fd, action->param1, action->param2, name);
 				break;
 
 			case ACTION_SEARCH_GAME:
@@ -822,13 +889,22 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_LOAD_GAME:
-				send_game_loaded(fd[TCP_SOCKET].fd, 2);
+				send_game_loaded(fd[TCP_SOCKET].fd, player_id);
+				printf("Starting keepalive timer\n");
+				if (timer_settime(keepalive_timer, 0, &tm_100ms, NULL) != 0)
+					printf("Error setting ka timer\n");
 				break;
 
 			case ACTION_USER_CMD:
 				if (handle_command(fd[TCP_SOCKET].fd, cmdbuf) < 0)
 					quit = 1;
 				cmdbuf[0] = 0;
+				break;
+
+			case ACTION_KEEPALIVE:
+				printf("sending keepalive\n");
+				send_keepalive(fd[TCP_SOCKET].fd, ka_index ? 0 : 0xf9, ka_array[ka_index++]);
+				if (ka_index == ka_size) ka_index = 0;
 				break;
 			}
 			free(action);
@@ -837,10 +913,10 @@ int main(int argc, char** argv)
 		// update the gui
 	}
 
+	timer_delete(&keepalive_timer);
+
 	free(buf);
-			printf("buf freed\n");
 	free(cmdbuf);
-			printf("cmdbuf freed\n");
 	return 0;
 }
 
