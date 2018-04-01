@@ -22,7 +22,8 @@ enum w3_msg_id
 	W3GS_KICKED = 0x1C,
 	W3GS_REQ_JOIN = 0x1E,
 	W3GS_OUTGOING_ACTION = 0x26,
-	W3GS_PLAYER_UPDATE = 0x28,
+	W3GS_KEEPALIVE, 				// 0x27
+	W3GS_PLAYER_UPDATE, 			// 0x28
 	W3GS_SEARCH_GAME = 0x2F,
 	W3GS_GAME_INFO,
 	W3GS_CREATE_GAME,
@@ -160,6 +161,13 @@ typedef struct w3gs_req_join // 0x1E
 	unsigned int unknown4;
 	unsigned int unknown5;
 } w3gs_req_join;
+
+typedef struct w3gs_keepalive // 0x27
+{
+	w3gs_header header;
+	char u1;
+	unsigned int val;
+} w3gs_keepalive;
 
 typedef struct w3gs_player_update // 0x28
 {
