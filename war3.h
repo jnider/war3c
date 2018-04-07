@@ -3,7 +3,8 @@
 
 #pragma pack(1)
 
-#define BLIZZARD_ID_WARCRAFT_3	"PX3W" // W3XP
+#define BLIZZARD_ID_WARCRAFT_3_XP	"PX3W" // W3XP
+#define BLIZZARD_ID_WARCRAFT_3	"3RAW"
 
 enum w3_msg_id
 {
@@ -21,6 +22,7 @@ enum w3_msg_id
 	W3GS_UNKNOWN2 = 0x11,
 	W3GS_KICKED = 0x1C,
 	W3GS_REQ_JOIN = 0x1E,
+   W3GS_GAME_LOADED = 0x23,
 	W3GS_OUTGOING_ACTION = 0x26,
 	W3GS_KEEPALIVE, 				// 0x27
 	W3GS_PLAYER_UPDATE, 			// 0x28 - original: CHAT_TO_HOST

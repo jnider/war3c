@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <getopt.h>
 #include "war3.h"
 #include "ll.h"
 #include "maps.h"
@@ -92,6 +93,24 @@ char* command_str[] =
 	"reset"
 };
 
+const char opts[] = "v:m:";
+
+static const struct option long_opts[] = 
+{
+	{"map-path", required_argument, 0, 'm' },
+	{"version",  required_argument, 0, 'v' },
+	{0, 0, 0, 0}
+};
+
+// configuration options for finding/joining a game
+static struct config
+{
+   char product[5];
+   int version;
+   char mappath[256];
+} config;
+
+
 // from ka_array.c
 extern const unsigned int ka_array[];
 extern const unsigned int ka_size;
@@ -99,7 +118,6 @@ int ka_index=0;
 
 const int udp_port = 6112;
 int state = STATE_SEARCHING;
-//char mapname[64];
 w3c_player_info player[MAX_PLAYERS];
 int player_id; // my player id
 timer_t keepalive_timer;
@@ -352,7 +370,7 @@ static void post_search_game(int sock, unsigned int dest, char* buf, int version
 	search_game->version = version;
 	search_game->unknown = 0;
 
-	//printf("post search game version=0x%x\n", version);
+	printf("Search game version %i\n", version);
 	dstaddr.sin_family = AF_INET;
 	dstaddr.sin_port = htons(udp_port);
 	dstaddr.sin_addr.s_addr = dest;
@@ -411,12 +429,11 @@ static void send_map_size(int sock, int size)
 
 static void send_game_loaded(int sock, unsigned char player)
 {
-	w3gs_player_loaded req;
-	req.header.a = 0xF7;
-	req.header.msg_id = W3GS_PLAYER_LOADED;
-	req.header.len = sizeof(w3gs_player_loaded);
-	req.player = player;
-	send(sock, &req, sizeof(req), 0);
+	w3gs_header header;
+	header.a = 0xF7;
+	header.msg_id = W3GS_GAME_LOADED;
+	header.len = sizeof(w3gs_header);
+	send(sock, &header, sizeof(header), 0);
 }
 
 static void send_keepalive(int sock, int u, int val)
@@ -433,7 +450,6 @@ static void send_keepalive(int sock, int u, int val)
 static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, linked_list* actions_list)
 {
 	int i;
-	int version=26;
 	char inaddr_str[16];
 	char product[5];
 
@@ -539,6 +555,10 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 		add_action(actions_list, ACTION_LOAD_GAME, 0, 0);
 		break;
 
+   case W3GS_INCOMING_ACTION:
+      printf("Got incoming action\n");
+      break;
+
 	case W3GS_OUTGOING_ACTION:
 		printf("Got outgoing action\n");
 		break;
@@ -591,7 +611,6 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 	case W3GS_SEARCH_GAME:
 		search_game = (w3gs_search_game*)buf;
 		strncpy(product, (char*)&search_game->product, 4);
-		product[4] = 0;
 		printf("Game search request - Product: %s\nVersion: 0x%x\n", product, search_game->version);
 		break;
 
@@ -613,14 +632,20 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 
 	case W3GS_CREATE_GAME:
 		create_game = (w3gs_create_game*)buf;
-		printf("%s created game %i, version=%i\n", inaddr_str, create_game->counter, create_game->version);
-		version = create_game->version;
+      strncpy(product, create_game->product, 4);
+		printf("%s created %s game %i, version=%i\n", inaddr_str, product, create_game->counter, create_game->version);
+      if (!config.version)
+		   config.version = create_game->version;
+      strcpy(config.product, product);
 		break;
 
 	case W3GS_REFRESH_GAME:
 		refresh_game = (w3gs_refresh_game*)buf;
 		if (state == STATE_SEARCHING)
-			add_action(actions_list, ACTION_SEARCH_GAME, inaddr->sin_addr.s_addr, version);
+      {
+         printf("%s is advertising a game\n", inaddr_str);
+			add_action(actions_list, ACTION_SEARCH_GAME, inaddr->sin_addr.s_addr, config.version);
+      }
 		break;
 
 	case W3GS_END_GAME:
@@ -736,6 +761,13 @@ static int handle_command(int fd, char* cmdline)
 	return 0;
 }
 
+void usage(void)
+{
+	printf("Warcraft 3 client\n");
+	printf("--version x     the version number to report to the server \n");
+	printf("--map-path <dir> the base directory containing the maps (not including the Maps directory)\n");
+}
+
 int main(int argc, char** argv)
 {
 	struct sockaddr_in sockaddr, srvaddr;
@@ -743,8 +775,36 @@ int main(int argc, char** argv)
 	struct sigaction sa;
 	struct sigevent sev;
 	sigset_t mask;
+	int opt_index;
 
 	printf("Warcraft III client\n");
+
+	while (1)
+	{
+		int opt = getopt_long(argc, argv, opts, long_opts, &opt_index);
+
+		if (opt == -1)
+			break;
+
+		switch (opt)
+		{
+		case 'v':
+			config.version = atoi(optarg);
+			printf("Setting version to %i\n", config.version);
+			break;
+
+		case 'm':
+			strcpy(config.mappath, optarg);
+			printf("Setting map path to %s\n", config.mappath);
+			break;
+
+		default:
+			printf("Got %c\n", opt);
+			usage();
+			exit(-1);
+		}
+
+	}
 
 	// create the socket
 	printf("Listen on UDP %i\n", udp_port);
@@ -783,8 +843,6 @@ int main(int argc, char** argv)
 	sem_init(&action_sem, 0, 1);
 	int quit = 0;
 	char* name = "JoelBot";
-	char* mapbase = "."; ///mnt/badger/games/war3ft/";
-	//char* mapbase = "/mnt/data/public/games/war3ft/";
 
 	struct pollfd fd[NUM_DESCRIPTORS];
 	fd[UDP_SOCKET].fd = udp;
@@ -811,7 +869,7 @@ int main(int argc, char** argv)
 	tm_100ms.it_interval.tv_nsec = 100000000; // 100ms
 	tm_100ms.it_interval.tv_sec = 0;
 	tm_100ms.it_value.tv_nsec = 0;
-	tm_100ms.it_value.tv_sec = 10;
+	tm_100ms.it_value.tv_sec = 2;
 
 	puts("> ");
 
@@ -839,7 +897,7 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_MAP_CHECK:
-				err = load_map((char*)action->param1, mapbase);
+				err = load_map((char*)action->param1, config.mappath);
 				if (err < 0)
 				{
 					printf("Map no good (%i)\n", err);
