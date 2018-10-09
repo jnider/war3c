@@ -779,6 +779,8 @@ int main(int argc, char** argv)
 
 	printf("Warcraft III client\n");
 
+   memset(&config, 0, sizeof(config));
+
 	while (1)
 	{
 		int opt = getopt_long(argc, argv, opts, long_opts, &opt_index);
