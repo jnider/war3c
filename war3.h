@@ -5,6 +5,7 @@
 
 #define BLIZZARD_ID_WARCRAFT_3_XP	"PX3W" // W3XP
 #define BLIZZARD_ID_WARCRAFT_3	"3RAW"
+#define PRODUCT_NONE             "NONE"
 
 enum w3_msg_id
 {

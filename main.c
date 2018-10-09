@@ -93,11 +93,12 @@ char* command_str[] =
 	"reset"
 };
 
-const char opts[] = "v:m:";
+const char opts[] = "m:p:v:";
 
 static const struct option long_opts[] = 
 {
 	{"map-path", required_argument, 0, 'm' },
+	{"product", required_argument, 0, 'p' },
 	{"version",  required_argument, 0, 'v' },
 	{0, 0, 0, 0}
 };
@@ -358,7 +359,7 @@ static int cmd_set(int sock, const char* player, const char* attr, const char* v
 	return 0;
 }
 
-static void post_search_game(int sock, unsigned int dest, char* buf, int version)
+static void post_search_game(int sock, unsigned int dest, char* buf, int version, const char* product)
 {
 	int buf_len = sizeof(w3gs_search_game);
 	struct sockaddr_in dstaddr;
@@ -366,7 +367,7 @@ static void post_search_game(int sock, unsigned int dest, char* buf, int version
 	search_game->header.a = 0xF7;
 	search_game->header.msg_id = W3GS_SEARCH_GAME;
 	search_game->header.len = sizeof(w3gs_search_game);
-	strncpy(search_game->product, BLIZZARD_ID_WARCRAFT_3, 4);
+	strncpy(search_game->product, product, 4);
 	search_game->version = version;
 	search_game->unknown = 0;
 
@@ -636,7 +637,8 @@ static void handle_message(int msg_id, char* buf, struct sockaddr_in* inaddr, li
 		printf("%s created %s game %i, version=%i\n", inaddr_str, product, create_game->counter, create_game->version);
       if (!config.version)
 		   config.version = create_game->version;
-      strcpy(config.product, product);
+      if (strcmp(config.product, PRODUCT_NONE) == 0)
+         strcpy(config.product, product);
 		break;
 
 	case W3GS_REFRESH_GAME:
@@ -766,6 +768,7 @@ void usage(void)
 	printf("Warcraft 3 client\n");
 	printf("--version x     the version number to report to the server \n");
 	printf("--map-path <dir> the base directory containing the maps (not including the Maps directory)\n");
+   printf("--product <product>    Product code ('ft' or 'roc')\n");
 }
 
 int main(int argc, char** argv)
@@ -780,6 +783,7 @@ int main(int argc, char** argv)
 	printf("Warcraft III client\n");
 
    memset(&config, 0, sizeof(config));
+   strcpy(config.product, PRODUCT_NONE);
 
 	while (1)
 	{
@@ -799,6 +803,19 @@ int main(int argc, char** argv)
 			strcpy(config.mappath, optarg);
 			printf("Setting map path to %s\n", config.mappath);
 			break;
+
+      case 'p':
+         if (strcasecmp("roc", optarg) == 0)
+            strcpy(config.product, BLIZZARD_ID_WARCRAFT_3);
+         else if (strcasecmp("ft", optarg) == 0)
+            strcpy(config.product, BLIZZARD_ID_WARCRAFT_3_XP);
+         else
+         {
+            printf("%s is not a recognized product code\n", optarg);
+			   usage();
+			   exit(-1);
+         }
+         break;
 
 		default:
 			printf("Got %c\n", opt);
@@ -945,7 +962,7 @@ int main(int argc, char** argv)
 				break;
 
 			case ACTION_SEARCH_GAME:
-				post_search_game(fd[UDP_SOCKET].fd, action->param1, buf, action->param2);
+				post_search_game(fd[UDP_SOCKET].fd, action->param1, buf, action->param2, config.product);
 				break;
 
 			case ACTION_LOAD_GAME:
